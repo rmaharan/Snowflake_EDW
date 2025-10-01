@@ -8,7 +8,7 @@ Simple Data Pipeline
 2. Grant usage
 3.Create Resource Monitor
 ****************************************************************************************************/
---!jinja
+--!jinja--
 
 USE ROLE SYSADMIN;
 CREATE WAREHOUSE IF NOT EXISTS "{{env}}_EDW_WHS"
