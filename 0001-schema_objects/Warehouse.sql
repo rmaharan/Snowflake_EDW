@@ -10,13 +10,13 @@ Simple Data Pipeline
 ****************************************************************************************************/
 --!jinja
 
-USE ROLE SYSADMIN
-CREATE OR REPLACE WAREHOUSE {{env}}_EDW_WHS
-    WAREHOUSE_TYPE = 'standard'
-    WAREHOUSE_SIZE = 'xsmall'
+USE ROLE SYSADMIN;
+CREATE WAREHOUSE IF NOT EXISTS "{{env}}_EDW_WHS"
+    WITH WAREHOUSE_TYPE = STANDARD
+    WAREHOUSE_SIZE = XSMALL
     MIN_CLUSTER_COUNT = 2
     MAX_CLUSTER_COUNT = 4
-    SCALING_POLICY = 'standard'
+    SCALING_POLICY = STANDARD
     AUTO_SUSPEND = 60
     INITIALLY_SUSPENDED = TRUE
     AUTO_RESUME = TRUE
@@ -24,6 +24,8 @@ CREATE OR REPLACE WAREHOUSE {{env}}_EDW_WHS
 
 GRANT USAGE ON WAREHOUSE "{{env}}_EDW_WHS"
   TO ROLE "sfg_{{env}}_data_engineer";
+
+  
 
 
 
