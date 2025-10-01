@@ -23,7 +23,7 @@ CREATE WAREHOUSE IF NOT EXISTS "{{env}}_EDW_WHS"
 	COMMENT = 'Utilised for loading the tables into enterprise data platform from various data sources';
 
 GRANT USAGE ON WAREHOUSE "{{env}}_EDW_WHS"
-  TO ROLE "sfg_{{env}}_data_engineer";
+  TO ROLE sfg_{{env}}_data_engineer;
 
   
 
