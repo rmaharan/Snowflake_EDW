@@ -41,6 +41,7 @@ USE ROLE ACCOUNTADMIN;
 ALTER WAREHOUSE {{env}}_EDW_WHS
     SET RESOURCE_MONITOR = "{{env}}_EDW_REPORTING_WHS_MONITOR";
 
+CREATE TAG environment_tag;
 ALTER WAREHOUSE {{env}}_EDW_WHS SET TAG environment_tag = '{{env}}';
 
 
