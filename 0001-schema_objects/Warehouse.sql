@@ -11,9 +11,9 @@ Simple Data Pipeline
 --!jinja------
 
 USE ROLE SYSADMIN;
-CREATE WAREHOUSE IF NOT EXISTS {{env}}_EDW_WHS
-    WITH WAREHOUSE_TYPE = 'standard'
-    WAREHOUSE_SIZE = 'xsmall'
+CREATE WAREHOUSE IF NOT EXISTS {{env}}_ENT_ELT_WHS
+    WITH WAREHOUSE_TYPE = 'STANDARD'
+    WAREHOUSE_SIZE = 'X-SMALL'
     MIN_CLUSTER_COUNT = 2
     MAX_CLUSTER_COUNT = 4
     SCALING_POLICY = 'ECONOMY'
@@ -22,27 +22,41 @@ CREATE WAREHOUSE IF NOT EXISTS {{env}}_EDW_WHS
     AUTO_RESUME = TRUE
 	COMMENT = 'Utilised for loading the tables into enterprise data platform from various data sources';
 
-GRANT USAGE ON WAREHOUSE {{env}}_EDW_WHS
+-- We need to understand the naming convention proposed 
+/*
+GRANT USAGE ON WAREHOUSE {{env}}_ENT_ELT_WHS
   TO ROLE sfg_{{env}}_data_engineer;
-  
+*/
+
+-- Gen 2 Comes with a premium so we don't do this or statement timeout
+/*
 ALTER WAREHOUSE  {{env}}_EDW_WHS SET RESOURCE_CONSTRAINT=STANDARD_GEN_2,
 STATEMENT_TIMEOUT_IN_SECONDS=7200;
+*/
 
 USE ROLE ACCOUNTADMIN;
 
- CREATE OR REPLACE RESOURCE MONITOR {{env}}_EDW_REPORTING_WHS_MONITOR
-    WITH CREDIT_QUOTA = 100
-    FREQUENCY = MONTHLY -- Can also be DAILY, WEEKLY, YEARLY, or NEVER (for a one-time quota)
+ CREATE OR REPLACE RESOURCE MONITOR {{env}}_ENT_ELT_WHS_MONITOR
+    WITH CREDIT_QUOTA = 200
+    FREQUENCY = MONTHLY --
     START_TIMESTAMP = IMMEDIATELY
-    TRIGGERS ON 75 PERCENT DO NOTIFY
-             ON 90 PERCENT DO SUSPEND
-             ON 100 PERCENT DO SUSPEND_IMMEDIATE; 
-             
-ALTER WAREHOUSE {{env}}_EDW_WHS
-    SET RESOURCE_MONITOR = "{{env}}_EDW_REPORTING_WHS_MONITOR";
+    NOTIFY_USERS = () -- Decide who to Support 
+    TRIGGERS
+    ON 50 PERCENT DO NOTIFY
+    ON 75 PERCENT DO NOTIFY
+    ON 80 PERCENT DO NOTIFY
+    ON 90 PERCENT DO NOTIFY;
+              
+ALTER WAREHOUSE {{env}}_ENT_ELT_WHS
+    SET RESOURCE_MONITOR = "{{env}}__ENT_ELT_WHS_MONITOR";
 
-CREATE OR REPLACE TAG environment_tag;
-ALTER WAREHOUSE {{env}}_EDW_WHS SET TAG environment_tag = '{{env}}';
+/*
+CREATE TAG environment_tag;
+ALTER WAREHOUSE {{env}}_ENT_ELT_WHS SET TAG environment_tag = '{{env}}';
+
+Tags will come in Governance DB 
+*/
+
 
 
 
