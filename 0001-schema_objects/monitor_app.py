@@ -3,8 +3,8 @@ class SnowflakePlatformMonitor:
     
     def __init__(self, session):
         self.session = session
-        self.warehouses = ["COMPUTE_WH", "ANALYTICS_WH", "ML_WH", "ETL_WH"]
-        self.databases = ["PRODUCTION_DB", "STAGING_DB", "DEV_DB", "ANALYTICS_DB"]
+        self.warehouses = ["COMPUTE_WH", "DEV_ENT_ELT_WHS", "DEV_STREAMLIT_WHS", "DEV_STREAMLIT_WHS"]
+        self.databases = ["DEV_STREAMLIT_DB", "DEV_RAW_DB", "DEV_STREAMLIT_DB", "DEV_STREAMLIT_DB"]
         
     def get_account_info(self):
         """Get Snowflake account information"""
