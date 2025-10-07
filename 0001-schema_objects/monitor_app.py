@@ -17,7 +17,7 @@ st.caption("Interactive dashboard over SNOWFLAKE.ACCOUNT_USAGE (credits, queries
 # Connection helpers
 # ----------------------------
 @st.cache_resource(show_spinner=False)
-def get_connection():
+/*def get_connection():
     cfg = st.secrets.get("snowflake", {})
     conn = snowflake.connector.connect(
         user=cfg.get("user", os.getenv("SNOWFLAKE_USER")),
@@ -28,7 +28,7 @@ def get_connection():
         database="SNOWFLAKE",
         schema="ACCOUNT_USAGE",
     )
-    return conn
+    return conn*/
  
 @st.cache_data(ttl=900, show_spinner=False)
 def run_query(sql: str, params: dict | None = None):
