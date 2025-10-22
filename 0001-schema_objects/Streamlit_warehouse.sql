@@ -50,15 +50,64 @@ USE ROLE ACCOUNTADMIN;
 ALTER WAREHOUSE {{env}}_STREAMLIT_WHS
     SET RESOURCE_MONITOR = "{{env}}_STREAMLIT_WHS_MONITOR";
 
-/*
-CREATE TAG environment_tag;
-ALTER WAREHOUSE {{env}}_ENT_ELT_WHS SET TAG environment_tag = '{{env}}';
-
-Tags will come in Governance DB 
-*/
+CREATE DATABASE {{env}}_STREAMLIT_DB;
+CREATE SCHEMA L80_INTEGRATION;
 
 
+CREATE OR REPLACE SECRET MYPAT
+    TYPE = PASSWORD
+    USERNAME='RMAHARAN1'
+    PASSWORD= 'ABC';
 
+    SHOW SECRETS;
+    
+CREATE OR REPLACE API INTEGRATION git_STREAMLIT_integration
+  API_PROVIDER = git_https_api
+  API_ALLOWED_PREFIXES = ('https://github.com/rmaharan/Snowflake_EDW')
+  ALLOWED_AUTHENTICATION_SECRETS=(MYPAT)
+  ENABLED = TRUE;
+  
+SHOW INTEGRATIONS;
+  
+CREATE OR REPLACE GIT REPOSITORY git_STREAMLIT_integration_extensions
+  API_INTEGRATION = git_snow_integration
+  GIT_CREDENTIALS = MYPAT
+  ORIGIN = 'https://github.com/rmaharan/Snowflake_EDW';
+
+GRANT OWNERSHIP ON INTEGRATION git_STREAMLIT_integration TO ROLE sfg_dev_data_engineer;
+GRANT OWNERSHIP ON GIT REPOSITORY git_STREAMLIT_integration_extensions TO ROLE sfg_dev_data_engineer;
+GRANT usage ON schema l80_integration TO ROLE sfg_dev_data_engineer;
+
+GRANT ROLE sfg_dev_data_engineer TO USER RMAHARAN1;
+USE ROLE sfg_dev_data_engineer;
+
+LS @git_STREAMLIT_integration_extensions/branches/main/0001-schema_objects/Warehouse.sql;
+LS @git_STREAMLIT_integration_extensions/branches/snowdev/;
+
+ALTER GIT REPOSITORY git_snow_integration_extensions FETCH;
+execute immediate from @git_snow_integration_extensions/branches/snowdev/0001-schema_objects/Streamlit_warehouse.sql USING (env=> 'DEV');
+
+
+USE DATABASE DEV_STREAMLIT_DB;
+CREATE SCHEMA STREAMLT;
+GRANT CREATE STREAMLIT ON SCHEMA STREAMLT TO ROLE ACCOUNTADMIN;
+
+GRANT usage ON schema STREAMLT TO ROLE sfg_dev_data_engineer;
+GRANT CREATE STREAMLIT ON SCHEMA STREAMLT TO ROLE sfg_dev_data_engineer;
+GRANT ROLE sfg_dev_data_engineer TO USER RMAHARAN1;
+USE ROLE sfg_dev_data_engineer;
+
+
+
+
+
+
+
+  
+
+
+
+  
 
 
 
