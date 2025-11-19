@@ -1,0 +1,408 @@
+import streamlit as st
+from snowflake.snowpark.context import get_active_session
+
+# --- Get active Snowpark session (inside Snowflake Streamlit) ---
+session = get_active_session()
+
+# --- Page setup ---
+
+st.title("### 🧙 iCare Make My Life Easy Framework")
+image_url = "https://www.icare.nsw.gov.au/-/media/icare/global-media/images/icare-logo-header.svg"
+st.image(image_url, caption="iCare Logo", width=150)
+
+page = st.sidebar.radio("Navigate", ["🧱 Setup Tables", "📜 Setup RBAC"])
+
+if page == "🧱 Setup Tables":
+    st.markdown("---")
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🧱 Create Tables", 
+        "🚰 Create Stages", 
+        "🔗 Create Pipes", 
+        "📜 Enable Logging"
+    ])
+
+    with tab1:
+            source_db = st.selectbox("Select Source Database", ["DATALAKE_CURATED_PROD"])
+            src_schema = [
+                    "P001_AAL",
+                    "P001_ACCPAC",
+                    "P001_CDR_CLONE",
+                    "P001_CDR_SAS",
+                    "P001_CDR_WCA",
+                    "P001_CLAIMS_TRIAGE_ENGINE",
+                    "P001_CMS",
+                    "P001_DATA_MIGRATION",
+                    "P001_EDW1",
+                    "P001_EML",
+                    "P001_FINEOS",
+                    "P001_GENESYS",
+                    "P001_GIO",
+                    "P001_GWAB",
+                    "P001_GWBC",
+                    "P001_GWCC",
+                    "P001_GWPC",
+                    "P001_IFNSW_CLAIM_INTERFACE",
+                    "P001_INFORMATICA_REFERENCE",
+                    "P001_LUMINOS",
+                    "P001_MEDIPASS",
+                    "P001_NAVIGATOR",
+                    "P001_ONBASE",
+                    "P001_QUALTRICS",
+                    "P001_SALESFORCE",
+                    "P001_SAP",
+                    "P001_SICORP",
+                    "P001_SIRA",
+                    "P001_SIRA_ODIN",
+                    "P001_SUNSYS",
+                    "P001_ULIS_ATLAS",
+                    "P001_ULIS_GW"
+            ]
+        
+            tgt_schema = [
+                    "AAL",
+                    "ACCPAC",
+                    "CDR_CLONE",
+                    "CDR_SAS",
+                    "CDR_WCA",
+                    "CLAIMS_TRIAGE_ENGINE",
+                    "CMS",
+                    "DATA_MIGRATION",
+                    "EDW1",
+                    "EML",
+                    "FINEOS",
+                    "GENESYS",
+                    "GIO",
+                    "GWAB",
+                    "GWBC",
+                    "GWCC",
+                    "GWPC",
+                    "IFNSW_CLAIM_INTERFACE",
+                    "INFORMATICA_REFERENCE",
+                    "LUMINOS",
+                    "MEDIPASS",
+                    "NAVIGATOR",
+                    "ONBASE",
+                    "QUALTRICS",
+                    "SALESFORCE",
+                    "SAP",
+                    "SICORP",
+                    "SIRA",
+                    "SIRA_ODIN",
+                    "SUNSYS",
+                    "ULIS_ATLAS",
+                    "ULIS_GW"
+            ]
+        
+            source_schema = st.selectbox("Select Source Schema", src_schema)
+            target_db = st.selectbox("Select Target Database", ["DEV_RAW_DB", "TGT_DB2", "TGT_DB3"])
+            target_schema = st.selectbox("Select Target Schema", tgt_schema)
+            
+            # --- Toggle for variant data ---
+            is_variant = st.toggle("Is the source data UnStructured? Default is True", value=True)
+            
+            # --- Button to generate SQL ---
+            if st.button("Generate CREATE TABLE Statements"):
+                # --- Fetch tables from source ---
+                tables_query = f"""
+                    SELECT upper(TABLE_NAME) as TABLE_NAME 
+                    FROM {source_db}.INFORMATION_SCHEMA.TABLES
+                    WHERE TABLE_SCHEMA = '{source_schema}'
+                    AND TABLE_TYPE='BASE TABLE'
+                    ORDER BY TABLE_NAME;
+                """
+                tables = session.sql(tables_query).collect()
+            
+                if not tables:
+                    st.warning(f"No tables found in {source_db}.{source_schema}")
+                else:
+                    sql_output = []  # store all SQL statements as text
+                    log_output = []  # store print-style log lines
+            
+                    for row in tables:
+                        table_name = row["TABLE_NAME"]
+            
+                        if is_variant:
+                            create_stmt = f"""
+            CREATE OR REPLACE TRANSIENT TABLE {target_db}.{target_schema}.{table_name} (
+                DATA_PAYLOAD VARIANT COMMENT 'Column that contains data in Raw Format',
+                METADATA_FILE_NAME VARCHAR(3500) COMMENT 'Full name and file path of ingested file',
+                METADATA_FILE_LAST_MODIFIED TIMESTAMP_NTZ(9) COMMENT 'Last modified timestamp of data file',
+                METADATA_SCAN_TIME TIMESTAMP_NTZ(9) COMMENT 'Start timestamp of S3 scan operation',
+                METADATA_ROW_NUMBER NUMBER(38,0) COMMENT 'Row number for each record in data file',
+                FILE_INGESTION_TIMESTAMP TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP() COMMENT 'Timestamp when file was inserted in Snowflake'
+            )
+            WITH TAG (GOVERNANCE_DB.TAGS.NSW_DATA_CLASSIFICATION='Personal');
+            """
+                        else:
+                            cols_query = f"""
+                                SELECT COLUMN_NAME, DATA_TYPE
+                                FROM {source_db}.INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = '{source_schema}'
+                                AND TABLE_NAME = '{table_name}'
+                                ORDER BY ORDINAL_POSITION;
+                            """
+                            cols = session.sql(cols_query).collect()
+            
+                            if cols:
+                                # Convert TEXT → VARCHAR, keep other datatypes same
+                                column_defs = []
+                                for c in cols:
+                                    col_name = c["COLUMN_NAME"]
+                                    src_type = c["DATA_TYPE"].upper()
+                                    tgt_type = "VARCHAR" if src_type == "TEXT" else src_type
+                                    column_defs.append(f"{col_name} {tgt_type}")
+                                col_defs = ",\n    ".join(column_defs)
+                            else:
+                                col_defs = "-- No columns found --"
+            
+                            create_stmt = f"""
+            CREATE OR REPLACE TRANSIENT TABLE {target_db}.{target_schema}.{table_name} (
+                {col_defs}
+            )
+            WITH TAG (GOVERNANCE_DB.TAGS.NSW_DATA_CLASSIFICATION='Sensitive – Personal');
+            """
+            
+                        sql_output.append(create_stmt.strip())
+            
+                    # --- Combine all logs + SQL into a single output block ---
+                    combined_output = "\n".join(log_output) + "\n\n" + "\n\n".join(sql_output)
+                    with st.expander("🧱 Generated SQL Statements (Copy-Friendly)", expanded=True):
+                        st.code(combined_output.strip(), language="sql")
+    with tab2:
+            
+                src_schema = [
+                    "ELT_UTILS"
+                ]
+               
+                Sys_Name = [
+                    "AAL",
+                    "ACCPAC",
+                    "CDR"
+                    "CLAIMS_TRIAGE_ENGINE",
+                    "CMS",
+                    "DATA_MIGRATION",
+                    "EDW1",
+                    "EML",
+                    "FINEOS",
+                    "GENESYS",
+                    "GIO",
+                    "GW",
+                    "IFNSW_CLAIM_INTERFACE",
+                    "INFORMATICA_REFERENCE",
+                    "LUMINOS",
+                    "MEDIPASS",
+                    "NAVIGATOR",
+                    "ONBASE",
+                    "QUALTRICS",
+                    "SALESFORCE",
+                    "SAP",
+                    "SICORP",
+                    "SIRA",
+                    "SIRA_ODIN",
+                    "SUNSYS",
+                    "ULIS_ATLAS",
+                    "ULIS_GW"
+               ]
+                Subsystem_Name = [
+                    "AAL",
+                    "ACCPAC",
+                    "CDR_CLONE",
+                    "CDR_SAS",
+                    "CDR_WCA",
+                    "CLAIMS_TRIAGE_ENGINE",
+                    "CMS",
+                    "DATA_MIGRATION",
+                    "EDW1",
+                    "EML",
+                    "FINEOS",
+                    "GENESYS",
+                    "GIO",
+                    "GWAB",
+                    "GWBC",
+                    "GWCC",
+                    "GWPC",
+                    "IFNSW_CLAIM_INTERFACE",
+                    "INFORMATICA_REFERENCE",
+                    "LUMINOS",
+                    "MEDIPASS",
+                    "NAVIGATOR",
+                    "ONBASE",
+                    "QUALTRICS",
+                    "SALESFORCE",
+                    "SAP",
+                    "SICORP",
+                    "SIRA",
+                    "SIRA_ODIN",
+                    "SUNSYS",
+                    "ULIS_ATLAS",
+                    "ULIS_GW"
+                ]
+                System_Name1 = st.selectbox("Select System Name", Sys_Name)
+                Sub_System_Name = st.selectbox("Select SubSystem Name", Subsystem_Name)
+                target_db = st.selectbox("Select Source Database", ["DEV_RAW_DB", "TGT_DB2", "TGT_DB3"])
+                target_schema = "ELT_UTILS"
+                FILE_FORMAT = st.selectbox("Select File Format", ["AVRO", "PARQUET"])
+                URL=st.selectbox("Select S3 URL", "s3://d220-icare-dl-infra-structured-bucket/")
+
+                # --- Button to generate CREATE STAG SQL ---
+                if st.button("Generate CREATE STAGE Statements"):
+                    # --- Fetch tables from CRITICAL_TABLE_LIST in selected DB/Schema ---
+                    table_query = f"""
+                        SELECT UPPER(TABLE_NAME)  AS TABLE_NAME,
+                        UPPER(SYSTEM_NAME) AS SYSTEM_NAME
+                        FROM {target_db}.{target_schema}.CRITICAL_TABLE_LIST
+                        WHERE SYSTEM_NAME = '{Sub_System_Name}'
+                        ORDER BY TABLE_NAME
+                    """
+                    tables = session.sql(table_query).collect()
+ 
+                    if not tables:
+                        st.warning("No tables found for the selected System / SubSystem.")
+                    else:
+                        # collect all sql statements into a single string
+                        all_create_stage_sql = []
+                        log_lines = []
+ 
+                        for row in tables:
+                            table_name = row["TABLE_NAME"]
+                            system_nm  = row["SYSTEM_NAME"]
+                            stage_name = (f"{target_db}.{target_schema}.DEV_EXT_STG_{System_Name1}_{Sub_System_Name}_{table_name}")
+
+ 
+                            # URL is whatever you chose in URL selectbox (base) + system + table
+                            url = f"{URL}{system_nm.lower()}/personal/{table_name.lower()}/"
+ 
+                            create_stage_stmt = f"""
+                                   CREATE OR REPLACE STAGE {stage_name}
+          URL=('s3://d220-icare-dl-infra-structured-bucket/{system_nm.lower()}/personal/{table_name.lower()}/')
+          storage_integration = DEV_ICARE_S3_SNOWFLAKE_INT
+          FILE_FORMAT = {target_db}.{target_schema}.FF_GW_{FILE_FORMAT}
+          WITH TAG (GOVERNANCE_DB.TAGS.NSW_DATA_CLASSIFICATION='Personal');
+                            """.strip()
+
+                            all_create_stage_sql.append(create_stage_stmt)
+ 
+        # ---- final combined output (this is what was showing only last stmt) ----
+                        combined_output = "\n".join(log_lines) + "\n\n" + "\n\n".join(all_create_stage_sql)
+ 
+                        with st.expander("🧱 Generated Create Stage SQL Statements (Copy-Friendly)", expanded=True):
+                            st.code(combined_output.strip(), language="sql")
+    with tab3:
+
+            
+            if st.button("Generate CREATE PIPE Statements"):
+            # --- Button to generate CREATE PIPE SQL ---
+                # --- Fetch tables from CRITICAL_TABLE_LIST in selected DB/Schema ---
+                table_query = f"""
+                        SELECT UPPER(TABLE_NAME)  AS TABLE_NAME,
+                        UPPER(SYSTEM_NAME) AS SYSTEM_NAME
+                        FROM {target_db}.{target_schema}.CRITICAL_TABLE_LIST
+                        WHERE SYSTEM_NAME = '{Sub_System_Name}'
+                        ORDER BY TABLE_NAME
+                """
+ 
+                tables = session.sql(table_query).collect()
+ 
+                if not tables:
+                    st.warning("No tables found for the selected System / SubSystem.")
+                else:
+                    # collect all sql statements into a single string
+                    all_create_pipe_sql = []
+                    pipe_log_lines = []
+ 
+                    for row in tables:
+                        table_name = row["TABLE_NAME"]
+                        system_nm  = row["SYSTEM_NAME"]
+ 
+                        pipe_name = (f"{target_db}.{target_schema}.DEV_PIPE_{System_Name1}_{Sub_System_Name}_{table_name}")
+  
+                        stage_name = (f"{target_db}.{target_schema}.DEV_EXT_STG_{System_Name1}_{Sub_System_Name}_{table_name}")
+                        create_pipe_stmt = f"""
+                                  CREATE OR REPLACE PIPE {pipe_name}
+             AUTO_INGEST=TRUE AS  
+             COPY INTO {target_db}.{Sub_System_Name}.{table_name} (DATA_PAYLOAD, METADATA_FILE_NAME, METADATA_FILE_LAST_MODIFIED,METADATA_SCAN_TIME,METADATA_ROW_NUMBER,FILE_INGESTION_TIMESTAMP) 
+             FROM ( 
+             SELECT $1, 
+             METADATA$FILENAME, 
+             METADATA$FILE_LAST_MODIFIED, 
+             METADATA$START_SCAN_TIME, 
+             METADATA$FILE_ROW_NUMBER, 
+             CURRENT_TIMESTAMP() 
+             FROM 
+             @{stage_name}
+             )
+             FILE_FORMAT = {target_db}.{target_schema}.FF_GW_{FILE_FORMAT};
+             """.strip()
+ 
+            
+                        all_create_pipe_sql.append(create_pipe_stmt)
+ 
+                        # ---- final combined output (this is what was showing only last stmt) ----
+            combined_output = "\n".join(pipe_log_lines) + "\n\n" + "\n\n".join(all_create_pipe_sql)
+ 
+            with st.expander("🧱 Generated SQL Statements (Copy-Friendly)", expanded=True):
+                 st.code(combined_output.strip(), language="sql")
+            
+elif page == "📜 Setup RBAC":   
+    st.markdown("---")
+    tab1, tab2, tab3 = st.tabs([
+        "🧱 RBAC Scripts for Read Only", 
+        "🧱 RBAC Scripts for Write", 
+        "📜 Enable Logging"
+    ])
+    source_db = st.selectbox("Select Database", ["DEV_RAW_DB"])
+    tgt_schema = [
+                    "AAL",
+                    "ACCPAC",
+                    "CDR_CLONE",
+                    "CDR_SAS",
+                    "CDR_WCA",
+                    "CLAIMS_TRIAGE_ENGINE",
+                    "CMS",
+                    "DATA_MIGRATION",
+                    "EDW1",
+                    "EML",
+                    "FINEOS",
+                    "GENESYS",
+                    "GIO",
+                    "GWAB",
+                    "GWBC",
+                    "GWCC",
+                    "GWPC",
+                    "IFNSW_CLAIM_INTERFACE",
+                    "INFORMATICA_REFERENCE",
+                    "LUMINOS",
+                    "MEDIPASS",
+                    "NAVIGATOR",
+                    "ONBASE",
+                    "QUALTRICS",
+                    "SALESFORCE",
+                    "SAP",
+                    "SICORP",
+                    "SIRA",
+                    "SIRA_ODIN",
+                    "SUNSYS",
+                    "ULIS_ATLAS",
+                    "ULIS_GW"
+            ]
+        
+    target_schema = st.selectbox("Select Schema", tgt_schema)
+    obj = [
+        "TABLES", 
+        "VIEW", 
+        "PROCEDURES", 
+        "Default"
+    ]
+    obj_options = st.selectbox(
+        "Generate RBAC For Snowflake Objects?",obj
+    )
+    objects= [
+            
+    ]
+
+    if obj_options == "Default":
+        ssql=(f"GRANT SELECT ON ALL TABLES IN SCHEMA {source_db}.{target_schema} TO ROLE ICARE_{source_db}_{target_schema}_R_AR")
+        sfsql=(f"\nGRANT SELECT ON FUTURE TABLES IN SCHEMA {source_db}.{target_schema} TO ROLE ICARE_{source_db}_{target_schema}_R_AR")
+        sfssql= ssql + sfsql
+        with st.expander("🧱 Generated SQL Statements (Copy-Friendly)", expanded=True):
+             st.code(sfssql.strip(), language="sql")
